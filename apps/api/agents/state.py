@@ -18,6 +18,7 @@ class ResearchState(BaseModel):
     The state of the entire repository research process (LangGraph State).
     """
     repo_url: str
+    repo_path: Optional[str] = None
     # The five main branches of our ToT
     structure_analysis: NodeState = Field(default_factory=lambda: NodeState(node_id="structure"))
     runtime_analysis: NodeState = Field(default_factory=lambda: NodeState(node_id="runtime"))

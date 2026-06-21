@@ -20,12 +20,27 @@ class StartResearchRequest(BaseModel):
 class StartResearchResponse(BaseModel):
     session_id: str
 
+import tempfile
+import subprocess
+import shutil
+
 def run_research_workflow(session_id: str, repo_url: str):
     """
     Background task that executes the LangGraph workflow.
     """
+    # Create a temporary directory for this session
+    temp_dir = tempfile.mkdtemp(prefix="codeatlas_")
+    print(f"[{session_id}] Cloning {repo_url} into {temp_dir}...")
+    
+    try:
+        subprocess.run(["git", "clone", "--depth", "1", repo_url, temp_dir], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        print(f"[{session_id}] Failed to clone repo: {e.stderr}")
+        # In a real app, we'd update state to "failed" here
+        # For now, we'll continue with an empty temp_dir or handle it in nodes
+    
     # Initialize the state
-    initial_state = ResearchState(repo_url=repo_url)
+    initial_state = ResearchState(repo_url=repo_url, repo_path=temp_dir)
     
     # Store initial state
     SESSIONS[session_id] = initial_state

@@ -1,13 +1,12 @@
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
 from agents.state import ResearchState, Evidence
-from agents.tools import PROMPTS, AnalysisOutput
+from agents.tools import PROMPTS, GET_TOOLS
 import os
 
 # Initialize LLM
 # In production, ensure OPENAI_API_KEY is set in the environment.
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-structured_llm = llm.with_structured_output(AnalysisOutput)
 
 def build_research_graph():
     """
@@ -15,36 +14,72 @@ def build_research_graph():
     """
     workflow = StateGraph(ResearchState)
     
+    from langgraph.prebuilt import create_react_agent
+    from langchain_core.messages import SystemMessage, HumanMessage
+    
     def _run_analysis_node(state: ResearchState, node_name: str) -> dict:
-        """Helper to run a specific analysis branch."""
+        """Helper to run a specific analysis branch using a ReAct agent."""
         # 1. Get the prompt for this branch
-        prompt = PROMPTS[node_name].format(repo_url=state.repo_url)
+        base_prompt = PROMPTS[node_name].format(repo_url=state.repo_url)
+        system_prompt = f"{base_prompt}\n\nYou have access to tools to explore the local repository at '{state.repo_path}'.\nUse `submit_findings` when you are done."
         
         # 2. Invoke the LLM
-        # If API key is missing during dev, we fallback to a mock response to prevent crashes
         if not os.environ.get("OPENAI_API_KEY"):
-            output = AnalysisOutput(
-                findings=[f"Mock finding for {node_name}"],
-                evidence=[{"filepath": "src/mock.py", "snippet": "def mock(): pass", "explanation": "Mock explanation"}]
-            )
-        else:
-            output = structured_llm.invoke(prompt)
+            return {
+                "status": "done",
+                "findings": [f"Mock finding for {node_name}"],
+                "evidence": [Evidence(filepath="src/mock.py", snippet="def mock(): pass", explanation="Mock explanation")]
+            }
             
-        # 3. Format evidence
-        parsed_evidence = [
-            Evidence(
-                filepath=e.get("filepath", "unknown"),
-                snippet=e.get("snippet", ""),
-                explanation=e.get("explanation", "")
-            ) for e in output.evidence
-        ]
+        # Create an inner ReAct agent to explore
+        agent = create_react_agent(llm, GET_TOOLS)
         
-        # 4. Return state update
-        return {
-            "status": "done",
-            "findings": output.findings,
-            "evidence": parsed_evidence
-        }
+        try:
+            # We seed it with the system prompt and a human message to start
+            result = agent.invoke({
+                "messages": [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content="Please begin your exploration and call submit_findings when done.")
+                ]
+            })
+            
+            # Extract findings from the tool call to submit_findings
+            findings = []
+            evidence_list = []
+            
+            # Look backwards through messages to find the submit_findings call
+            for m in reversed(result["messages"]):
+                if hasattr(m, 'tool_calls') and m.tool_calls:
+                    for tc in m.tool_calls:
+                        if tc['name'] == 'submit_findings':
+                            args = tc['args']
+                            findings = args.get('findings', [])
+                            for e in args.get('evidence', []):
+                                evidence_list.append(Evidence(
+                                    filepath=e.get("filepath", "unknown"),
+                                    snippet=e.get("snippet", ""),
+                                    explanation=e.get("explanation", "")
+                                ))
+                            break
+                    if findings:
+                        break
+                        
+            # Fallback if agent didn't use submit_findings correctly
+            if not findings:
+                findings = ["Exploration completed but findings were not formatted correctly."]
+                evidence_list = [Evidence(filepath="unknown", snippet="", explanation=result["messages"][-1].content)]
+                
+            return {
+                "status": "done",
+                "findings": findings,
+                "evidence": evidence_list
+            }
+        except Exception as e:
+            return {
+                "status": "failed",
+                "findings": [f"Analysis failed: {str(e)}"],
+                "evidence": []
+            }
 
     def analyze_structure(state: ResearchState) -> ResearchState:
         res = _run_analysis_node(state, "structure")

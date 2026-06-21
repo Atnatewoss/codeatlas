@@ -2,23 +2,46 @@ import os
 from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 
-# Mock Tools for Codebase Exploration
-# In a real system, these would interact with a vector database, AST parser, or GitHub API.
+from typing import List, Dict
+from pydantic import BaseModel, Field
+from langchain_core.tools import tool
+from agents.local_tools import search_file_tree, read_file_chunk, get_file_skeleton, find_references
 
-def search_codebase(query: str, repo_url: str) -> str:
-    """Simulates searching a codebase."""
-    return f"Mock search results for '{query}' in {repo_url}"
-
-def read_file(filepath: str, repo_url: str) -> str:
-    """Simulates reading a file's content."""
-    return f"Mock content of {filepath}"
-
-# Structured Output Schemas for our LLM to generate ToT branches
 class AnalysisOutput(BaseModel):
     findings: List[str] = Field(description="List of key architectural findings or insights.")
     evidence: List[Dict[str, str]] = Field(
         description="Evidence supporting the findings. Must contain 'filepath', 'snippet', and 'explanation'."
     )
+
+@tool
+def tool_search_file_tree(repo_path: str, pattern: str) -> List[str]:
+    """Search for files in the repository matching a regex pattern. Useful for finding files by name."""
+    return search_file_tree(repo_path, pattern)[:50] # Limit to 50 results
+
+@tool
+def tool_read_file_chunk(repo_path: str, filepath: str, start_line: int, end_line: int) -> str:
+    """Read specific lines of a file. Use this to read the implementation of a function or class."""
+    return read_file_chunk(repo_path, filepath, start_line, end_line)
+
+@tool
+def tool_get_file_skeleton(repo_path: str, filepath: str) -> str:
+    """Extract classes and function signatures from a file, omitting the body. Use this to get an overview of a file's structure."""
+    return get_file_skeleton(repo_path, filepath)
+
+@tool
+def tool_find_references(repo_path: str, symbol: str) -> List[str]:
+    """Find files and line numbers where a symbol is mentioned. Useful for tracing execution flow."""
+    return find_references(repo_path, symbol)[:50] # Limit to 50 results
+
+@tool
+def submit_findings(findings: List[str], evidence: List[Dict[str, str]]) -> str:
+    """Call this tool when you have finished exploring and are ready to submit your final findings and evidence.
+    Evidence must be a list of dictionaries with 'filepath', 'snippet', and 'explanation'.
+    """
+    return "Findings submitted successfully."
+
+# List of tools to bind to the LLM
+GET_TOOLS = [tool_search_file_tree, tool_read_file_chunk, tool_get_file_skeleton, tool_find_references, submit_findings]
 
 # Prompts for the different branches
 PROMPTS = {
