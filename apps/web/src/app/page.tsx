@@ -9,15 +9,33 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Github, Play, GitBranch } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { startResearch } from "@/lib/api"
 
 export default function Home() {
   const [researchState, setResearchState] = useState<"idle" | "researching">("idle")
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [repoUrl, setRepoUrl] = useState("")
+  const [isStarting, setIsStarting] = useState(false)
+
+  const handleStartResearch = async () => {
+    if (!repoUrl) return
+    setIsStarting(true)
+    try {
+      const res = await startResearch(repoUrl)
+      setSessionId(res.session_id)
+      setResearchState("researching")
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsStarting(false)
+    }
+  }
 
   return (
     <div className="flex-1 flex h-full overflow-hidden">
       
       {/* Left Panel: Research Branches (Visible when researching) */}
-      {researchState === "researching" && (
+      {researchState === "researching" && sessionId && (
         <div className="w-[320px] bg-background border-r flex flex-col shrink-0">
           <div className="h-14 border-b flex items-center px-4 font-medium text-sm gap-2">
             <GitBranch className="w-4 h-4 text-muted-foreground" />
@@ -29,7 +47,7 @@ export default function Home() {
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
                   Active Branches
                 </h3>
-                <ResearchStatus />
+                <ResearchStatus sessionId={sessionId} />
               </div>
               
               <div className="border-t pt-6">
@@ -53,14 +71,20 @@ export default function Home() {
               <div className="space-y-4">
                 <div className="relative">
                   <Github className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="https://github.com/..." className="pl-9 h-10 bg-background/50" />
+                  <Input 
+                    placeholder="https://github.com/..." 
+                    className="pl-9 h-10 bg-background/50" 
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                  />
                 </div>
                 <Button 
                   className="w-full" 
-                  onClick={() => setResearchState("researching")}
+                  onClick={handleStartResearch}
+                  disabled={isStarting || !repoUrl}
                 >
                   <Play className="w-4 h-4 mr-2" />
-                  Start Deep Research
+                  {isStarting ? "Starting..." : "Start Deep Research"}
                 </Button>
               </div>
 
@@ -69,22 +93,22 @@ export default function Home() {
                   Examples
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button variant="secondary" size="sm" className="h-8">langchain-ai/langgraph</Button>
-                  <Button variant="secondary" size="sm" className="h-8">pyrpc/pyrpc</Button>
-                  <Button variant="secondary" size="sm" className="h-8">fastapi/fastapi</Button>
+                  <Button variant="secondary" size="sm" className="h-8" onClick={() => setRepoUrl("https://github.com/langchain-ai/langgraph")}>langchain-ai/langgraph</Button>
+                  <Button variant="secondary" size="sm" className="h-8" onClick={() => setRepoUrl("https://github.com/pyrpc/pyrpc")}>pyrpc/pyrpc</Button>
+                  <Button variant="secondary" size="sm" className="h-8" onClick={() => setRepoUrl("https://github.com/fastapi/fastapi")}>fastapi/fastapi</Button>
                 </div>
               </div>
             </div>
           </div>
         ) : (
-          <ChatPanel />
+          <ChatPanel sessionId={sessionId!} />
         )}
       </div>
 
       {/* Right Side Panel: Evidence */}
       {researchState === "researching" && (
         <div className="w-[380px] bg-background flex flex-col shrink-0">
-          <EvidencePanel />
+          <EvidencePanel sessionId={sessionId!} />
         </div>
       )}
     </div>
