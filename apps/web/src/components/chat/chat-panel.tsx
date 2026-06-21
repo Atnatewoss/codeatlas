@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Composer } from "./composer"
-import { MessageComponent } from "./message"
+import { Composer } from "@/components/chat/composer"
+import { MessageComponent } from "@/components/chat/message"
 import { sendChatMessage } from "@/lib/api"
 import { useMutation } from "@tanstack/react-query"
 
