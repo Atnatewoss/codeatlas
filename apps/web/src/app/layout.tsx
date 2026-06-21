@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
+import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -16,13 +17,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    // Always apply dark mode class since it's dark-mode first
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${inter.className} antialiased h-screen overflow-hidden flex bg-background`}>
-        <Sidebar />
-        <main className="flex-1 flex flex-col min-w-0">
-          {children}
-        </main>
+        <Providers>
+          <Sidebar />
+          <main className="flex-1 flex flex-col min-w-0">
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileCode2, ExternalLink } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getResearchStatus } from "@/lib/api"
+import { useQuery } from "@tanstack/react-query"
 
 interface Evidence {
   filepath: string
@@ -29,52 +29,35 @@ const BRANCH_LABELS: Record<string, string> = {
 }
 
 export function EvidencePanel({ sessionId }: { sessionId: string }) {
-  const [sections, setSections] = useState<ReportSection[]>([])
-  const [allEvidence, setAllEvidence] = useState<Evidence[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, isLoading } = useQuery({
+    queryKey: ["researchStatus", sessionId],
+    queryFn: () => getResearchStatus(sessionId),
+    refetchInterval: (query) => {
+      if (!query.state.data) return 3000
+      const allDone = BRANCH_ORDER.every((k) => query.state.data.branches[k]?.status === "done")
+      return allDone ? false : 3000
+    },
+  })
 
-  const fetchData = useCallback(async () => {
-    try {
-      const data = await getResearchStatus(sessionId)
-      const newSections: ReportSection[] = []
-      const evidenceAcc: Evidence[] = []
+  let sections: ReportSection[] = []
+  let allEvidence: Evidence[] = []
 
-      for (const key of BRANCH_ORDER) {
-        const branch = data.branches[key]
-        if (branch && branch.status === "done") {
-          newSections.push({
-            label: BRANCH_LABELS[key],
-            findings: branch.findings,
-            evidence: branch.evidence,
-          })
-          evidenceAcc.push(...branch.evidence)
-        }
-      }
-
-      setSections(newSections)
-      setAllEvidence(evidenceAcc)
-
-      const allDone = BRANCH_ORDER.every((k) => data.branches[k]?.status === "done")
-      if (allDone) setLoading(false)
-      return allDone
-    } catch {
-      setLoading(false)
-      return true
-    }
-  }, [sessionId])
-
-  useEffect(() => {
-    let cancelled = false
-    const poll = async () => {
-      while (!cancelled) {
-        const done = await fetchData()
-        if (done || cancelled) break
-        await new Promise((r) => setTimeout(r, 3000))
+  if (data?.branches) {
+    for (const key of BRANCH_ORDER) {
+      const branch = data.branches[key]
+      if (branch && branch.status === "done") {
+        sections.push({
+          label: BRANCH_LABELS[key],
+          findings: branch.findings,
+          evidence: branch.evidence,
+        })
+        allEvidence.push(...branch.evidence)
       }
     }
-    poll()
-    return () => { cancelled = true }
-  }, [fetchData])
+  }
+
+  const isComplete = data?.branches && BRANCH_ORDER.every((k) => data.branches[k]?.status === "done")
+  const showLoading = isLoading || !isComplete
 
   return (
     <Tabs defaultValue="evidence" className="flex-1 flex flex-col h-full w-full">
@@ -94,7 +77,7 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
             <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Cited References
             </div>
-            {loading && allEvidence.length === 0 ? (
+            {showLoading && allEvidence.length === 0 ? (
               <div className="space-y-2">
                 {[...Array(3)].map((_, i) => (
                   <Skeleton key={i} className="h-16 w-full rounded-lg" />
@@ -130,7 +113,7 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
           {/* Full Report Tab */}
           <TabsContent value="report" className="mt-0 space-y-6">
             <h3 className="text-foreground font-medium text-base">Deep Research Report</h3>
-            {loading && sections.length === 0 ? (
+            {showLoading && sections.length === 0 ? (
               <div className="space-y-4">
                 {[...Array(3)].map((_, i) => (
                   <div key={i} className="space-y-2">
@@ -162,7 +145,7 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
             <div className="aspect-square bg-muted/30 rounded-lg border border-dashed flex items-center justify-center flex-col text-muted-foreground">
               <span className="text-sm font-medium">LikeC4 Diagram</span>
               <span className="text-xs mt-1 text-center px-4">
-                Interactive architecture graph — generated from reasoning branches
+                Interactive architecture graph generated from reasoning branches
               </span>
             </div>
           </TabsContent>

@@ -1,9 +1,10 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Composer } from "./composer"
-import { MessageComponent } from "./message"
+import { Composer } from "@/components/chat/composer"
+import { MessageComponent } from "@/components/chat/message"
 import { sendChatMessage } from "@/lib/api"
+import { useMutation } from "@tanstack/react-query"
 
 interface Message {
   id: string
@@ -21,14 +22,37 @@ export function ChatPanel({ sessionId }: { sessionId: string }) {
       citations: []
     }
   ])
-  const [isLoading, setIsLoading] = useState(false)
+
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const handleSend = async (content: string) => {
+  const { mutate: sendMessage, isPending: isLoading } = useMutation({
+    mutationFn: (history: { role: string; content: string }[]) => sendChatMessage(sessionId, history),
+    onSuccess: (res) => {
+      const assistantMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: res.content,
+        citations: res.citations ?? [],
+      }
+      setMessages((prev) => [...prev, assistantMsg])
+    },
+    onError: () => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "assistant",
+          content: "Sorry, I couldn't reach the research server. Make sure the API is running on port 8000.",
+        },
+      ])
+    }
+  })
+
+  const handleSend = (content: string) => {
     if (!content.trim() || isLoading) return
 
     const userMsg: Message = {
@@ -38,35 +62,13 @@ export function ChatPanel({ sessionId }: { sessionId: string }) {
     }
 
     setMessages((prev) => [...prev, userMsg])
-    setIsLoading(true)
 
-    try {
-      const history = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }))
+    const history = [...messages, userMsg].map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
 
-      const res = await sendChatMessage(sessionId, history)
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: res.content,
-        citations: res.citations ?? [],
-      }
-      setMessages((prev) => [...prev, assistantMsg])
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: "Sorry, I couldn't reach the research server. Make sure the API is running on port 8000.",
-        },
-      ])
-    } finally {
-      setIsLoading(false)
-    }
+    sendMessage(history)
   }
 
   return (
