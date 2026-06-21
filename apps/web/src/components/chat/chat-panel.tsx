@@ -22,7 +22,7 @@ export function ChatPanel({ sessionId }: { sessionId: string }) {
       citations: []
     }
   ])
-  const [isLoading, setIsLoading] = useState(false)
+
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

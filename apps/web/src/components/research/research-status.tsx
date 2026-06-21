@@ -75,7 +75,7 @@ export function ResearchStatus({ sessionId }: { sessionId: string }) {
             {/* Show findings inline when branch completes */}
             {status === "done" && findings.length > 0 && (
               <div className="ml-8 space-y-1">
-                {findings.slice(0, 2).map((f, i) => (
+                {findings.slice(0, 2).map((f: string, i: number) => (
                   <div key={i} className="text-xs text-muted-foreground leading-relaxed truncate">
                     • {f}
                   </div>
