@@ -10,25 +10,27 @@ import { Input } from "@/components/ui/input"
 import { Github, Play, GitBranch } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { startResearch } from "@/lib/api"
+import { useMutation } from "@tanstack/react-query"
 
 export default function Home() {
   const [researchState, setResearchState] = useState<"idle" | "researching">("idle")
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [repoUrl, setRepoUrl] = useState("")
-  const [isStarting, setIsStarting] = useState(false)
 
-  const handleStartResearch = async () => {
-    if (!repoUrl) return
-    setIsStarting(true)
-    try {
-      const res = await startResearch(repoUrl)
+  const { mutate: startResearchMutation, isPending: isStarting } = useMutation({
+    mutationFn: startResearch,
+    onSuccess: (res) => {
       setSessionId(res.session_id)
       setResearchState("researching")
-    } catch (e) {
+    },
+    onError: (e) => {
       console.error(e)
-    } finally {
-      setIsStarting(false)
     }
+  })
+
+  const handleStartResearch = () => {
+    if (!repoUrl) return
+    startResearchMutation(repoUrl)
   }
 
   return (

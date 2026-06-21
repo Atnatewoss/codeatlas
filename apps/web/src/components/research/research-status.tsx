@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
 import { Check, Loader2 } from "lucide-react"
 import { getResearchStatus } from "@/lib/api"
+import { useQuery } from "@tanstack/react-query"
 
 interface BranchStatus {
   node_id: string
@@ -30,42 +30,22 @@ const BRANCH_LABELS: Record<string, string> = {
 const BRANCH_ORDER = ["structure", "runtime", "design", "onboarding", "risk"] as const
 
 export function ResearchStatus({ sessionId }: { sessionId: string }) {
-  const [branches, setBranches] = useState<ResearchBranches | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const poll = useCallback(async () => {
-    try {
-      const data = await getResearchStatus(sessionId)
-      setBranches(data.branches)
-      
-      // Stop polling when all branches are done
+  const { data, isError } = useQuery({
+    queryKey: ["researchStatus", sessionId],
+    queryFn: () => getResearchStatus(sessionId),
+    refetchInterval: (query) => {
+      if (!query.state.data) return 2000
       const allDone = BRANCH_ORDER.every(
-        (key) => data.branches[key].status === "done"
+        (key) => query.state.data.branches[key]?.status === "done"
       )
-      return allDone
-    } catch (e) {
-      setError("Lost connection to the research server.")
-      return true // stop polling on error
-    }
-  }, [sessionId])
+      return allDone ? false : 2000
+    },
+  })
 
-  useEffect(() => {
-    let cancelled = false
+  const branches = data?.branches
 
-    const startPolling = async () => {
-      while (!cancelled) {
-        const done = await poll()
-        if (done || cancelled) break
-        await new Promise((r) => setTimeout(r, 2000))
-      }
-    }
-
-    startPolling()
-    return () => { cancelled = true }
-  }, [poll])
-
-  if (error) {
-    return <div className="text-sm text-destructive-foreground">{error}</div>
+  if (isError) {
+    return <div className="text-sm text-destructive-foreground">Lost connection to the research server.</div>
   }
 
   return (
