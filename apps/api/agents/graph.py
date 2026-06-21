@@ -1,47 +1,84 @@
 from langgraph.graph import StateGraph, END
-from agents.state import ResearchState
+from langchain_openai import ChatOpenAI
+from agents.state import ResearchState, Evidence
+from agents.tools import PROMPTS, AnalysisOutput
+import os
+
+# Initialize LLM
+# In production, ensure OPENAI_API_KEY is set in the environment.
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+structured_llm = llm.with_structured_output(AnalysisOutput)
 
 def build_research_graph():
     """
     Builds the Tree of Thought (ToT) exploration graph.
-    Inspired by RepoUnderstander: explores repository via different logical branches.
     """
     workflow = StateGraph(ResearchState)
     
-    # Define Nodes for each ToT branch
+    def _run_analysis_node(state: ResearchState, node_name: str) -> dict:
+        """Helper to run a specific analysis branch."""
+        # 1. Get the prompt for this branch
+        prompt = PROMPTS[node_name].format(repo_url=state.repo_url)
+        
+        # 2. Invoke the LLM
+        # If API key is missing during dev, we fallback to a mock response to prevent crashes
+        if not os.environ.get("OPENAI_API_KEY"):
+            output = AnalysisOutput(
+                findings=[f"Mock finding for {node_name}"],
+                evidence=[{"filepath": "src/mock.py", "snippet": "def mock(): pass", "explanation": "Mock explanation"}]
+            )
+        else:
+            output = structured_llm.invoke(prompt)
+            
+        # 3. Format evidence
+        parsed_evidence = [
+            Evidence(
+                filepath=e.get("filepath", "unknown"),
+                snippet=e.get("snippet", ""),
+                explanation=e.get("explanation", "")
+            ) for e in output.evidence
+        ]
+        
+        # 4. Return state update
+        return {
+            "status": "done",
+            "findings": output.findings,
+            "evidence": parsed_evidence
+        }
+
     def analyze_structure(state: ResearchState) -> ResearchState:
-        # Mock logic for structure analysis (modules, dependencies, layers, boundaries)
-        state.structure_analysis.status = "running"
-        # ... logic to analyze ...
-        state.structure_analysis.status = "done"
+        res = _run_analysis_node(state, "structure")
+        state.structure_analysis.status = res["status"]
+        state.structure_analysis.findings = res["findings"]
+        state.structure_analysis.evidence = res["evidence"]
         return state
 
     def analyze_runtime(state: ResearchState) -> ResearchState:
-        # Mock logic for runtime analysis (entry points, flow)
-        state.runtime_analysis.status = "running"
-        # ... logic to analyze ...
-        state.runtime_analysis.status = "done"
+        res = _run_analysis_node(state, "runtime")
+        state.runtime_analysis.status = res["status"]
+        state.runtime_analysis.findings = res["findings"]
+        state.runtime_analysis.evidence = res["evidence"]
         return state
 
     def analyze_design(state: ResearchState) -> ResearchState:
-        # Mock logic for design reasoning
-        state.design_reasoning.status = "running"
-        # ... logic to analyze ...
-        state.design_reasoning.status = "done"
+        res = _run_analysis_node(state, "design")
+        state.design_reasoning.status = res["status"]
+        state.design_reasoning.findings = res["findings"]
+        state.design_reasoning.evidence = res["evidence"]
         return state
 
     def analyze_onboarding(state: ResearchState) -> ResearchState:
-        # Mock logic for onboarding
-        state.developer_onboarding.status = "running"
-        # ... logic to analyze ...
-        state.developer_onboarding.status = "done"
+        res = _run_analysis_node(state, "onboarding")
+        state.developer_onboarding.status = res["status"]
+        state.developer_onboarding.findings = res["findings"]
+        state.developer_onboarding.evidence = res["evidence"]
         return state
 
     def analyze_risks(state: ResearchState) -> ResearchState:
-        # Mock logic for risk assessment
-        state.risk_assessment.status = "running"
-        # ... logic to analyze ...
-        state.risk_assessment.status = "done"
+        res = _run_analysis_node(state, "risk")
+        state.risk_assessment.status = res["status"]
+        state.risk_assessment.findings = res["findings"]
+        state.risk_assessment.evidence = res["evidence"]
         return state
 
     # Add Nodes
@@ -51,12 +88,7 @@ def build_research_graph():
     workflow.add_node("onboarding", analyze_onboarding)
     workflow.add_node("risk", analyze_risks)
 
-    # In a full ToT, these might branch from a planner node and run in parallel, 
-    # then aggregate results. For simplicity of the skeleton, we can run them in a sequence 
-    # or parallel from the entry point.
-    
-    # Assuming parallel execution starting from the beginning:
-    # A custom edge or entry point logic can fan-out.
+    # Sequence execution (ToT branches could be executed in parallel using Fan-out)
     workflow.set_entry_point("structure")
     workflow.add_edge("structure", "runtime")
     workflow.add_edge("runtime", "design")
