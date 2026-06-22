@@ -50,7 +50,7 @@ export function HomeContent() {
   const sourceCount = statusData?.branches 
     ? Object.values(statusData.branches)
         .filter(b => b.status === 'complete')
-        .reduce((acc, b) => acc + (b.findings ? b.findings.reduce((fAcc, f) => fAcc + (f.evidence ? f.evidence.length : 0), 0) : 0), 0)
+        .reduce((acc: number, b) => acc + (b.findings ? b.findings.reduce((fAcc: number, f: { evidence?: unknown[] }) => fAcc + (f.evidence ? f.evidence.length : 0), 0) : 0), 0)
     : 0;
 
   const handleStartResearch = () => {
