@@ -4,18 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileCode2, ExternalLink } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getResearchStatus } from "@/lib/api"
+import { getResearchStatus, type ResearchStatusResponse, type Evidence } from "@/lib/api"
 import { useQuery } from "@tanstack/react-query"
-
-interface Evidence {
-  filepath: string
-  snippet: string
-  explanation: string
-}
 
 interface ReportSection {
   label: string
-  findings: string[]
+  findings: { text: string; confidence: number }[]
   evidence: Evidence[]
 }
 
@@ -29,13 +23,13 @@ const BRANCH_LABELS: Record<string, string> = {
 }
 
 export function EvidencePanel({ sessionId }: { sessionId: string }) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<ResearchStatusResponse>({
     queryKey: ["researchStatus", sessionId],
     queryFn: () => getResearchStatus(sessionId),
     refetchInterval: (query) => {
       if (!query.state.data) return 3000
-      const allDone = BRANCH_ORDER.every((k) => query.state.data.branches[k]?.status === "done")
-      return allDone ? false : 3000
+      if (query.state.data.status === "complete" || query.state.data.status === "failed") return false
+      return 3000
     },
   })
 
@@ -45,19 +39,23 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
   if (data?.branches) {
     for (const key of BRANCH_ORDER) {
       const branch = data.branches[key]
-      if (branch && branch.status === "done") {
+      if (branch && branch.status === "complete") {
+        const branchEvidence: Evidence[] = []
+        branch.findings.forEach((f) => {
+          branchEvidence.push(...f.evidence)
+        })
         sections.push({
           label: BRANCH_LABELS[key],
           findings: branch.findings,
-          evidence: branch.evidence,
+          evidence: branchEvidence,
         })
-        allEvidence.push(...branch.evidence)
+        allEvidence.push(...branchEvidence)
       }
     }
   }
 
-  const isComplete = data?.branches && BRANCH_ORDER.every((k) => data.branches[k]?.status === "done")
-  const showLoading = isLoading || !isComplete
+  const isComplete = data?.status === "complete"
+  const showLoading = isLoading || (data && data.status === "running")
 
   return (
     <Tabs defaultValue="evidence" className="flex-1 flex flex-col h-full w-full">
@@ -113,6 +111,28 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
           {/* Full Report Tab */}
           <TabsContent value="report" className="mt-0 space-y-6">
             <h3 className="text-foreground font-medium text-base">Deep Research Report</h3>
+
+            {/* Synthesis summary when complete */}
+            {isComplete && data?.synthesis && (
+              <div className="space-y-3 p-4 rounded-lg border bg-card">
+                <p className="text-sm text-muted-foreground leading-relaxed">{data.synthesis.summary}</p>
+                {data.synthesis.key_insights.length > 0 && (
+                  <div className="space-y-1.5">
+                    <h4 className="text-xs font-semibold text-foreground uppercase tracking-wider">Key Insights</h4>
+                    {data.synthesis.key_insights.map((insight, i) => (
+                      <div key={i} className="flex items-start gap-2 text-sm">
+                        <span className="text-primary mt-0.5 shrink-0">•</span>
+                        <span className="text-muted-foreground">{insight.text}</span>
+                        <span className="text-xs text-muted-foreground/50 shrink-0 ml-auto">
+                          {Math.round(insight.confidence * 100)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {showLoading && sections.length === 0 ? (
               <div className="space-y-4">
                 {[...Array(3)].map((_, i) => (
@@ -131,7 +151,7 @@ export function EvidencePanel({ sessionId }: { sessionId: string }) {
                     {section.findings.map((finding, j) => (
                       <li key={j} className="text-sm text-muted-foreground leading-relaxed flex gap-2">
                         <span className="text-primary mt-0.5 shrink-0">•</span>
-                        {finding}
+                        {finding.text}
                       </li>
                     ))}
                   </ul>
