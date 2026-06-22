@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from agents.state import Evidence
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
