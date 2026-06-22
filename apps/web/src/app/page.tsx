@@ -20,7 +20,7 @@ export default function Home() {
   const [researchState, setResearchState] = useState<"idle" | "researching">("idle")
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [repoUrl, setRepoUrl] = useState("")
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   const { mutate: startResearchMutation, isPending: isStarting } = useMutation({
     mutationFn: startResearch,
