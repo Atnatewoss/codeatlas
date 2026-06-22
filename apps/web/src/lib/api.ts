@@ -44,7 +44,8 @@ export interface SynthesisResult {
 export interface ResearchStatusResponse {
   session_id: string
   repo_url: string
-  status: "pending" | "running" | "complete" | "failed"
+  status: "pending" | "cloning" | "running" | "complete" | "failed"
+  clone_progress?: string
   branches: ResearchBranches
   evaluation: EvaluationResult | null
   synthesis: SynthesisResult | null

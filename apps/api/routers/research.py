@@ -19,6 +19,7 @@ import uuid
 import tempfile
 import subprocess
 import shutil
+import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
@@ -29,6 +30,8 @@ from pydantic import BaseModel
 from research.state import ResearchState, NodeState, EvaluationResult, SynthesisResult
 from research.graph import build_research_graph
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
@@ -83,6 +86,7 @@ def _serialize_session(session_id: str) -> Optional[dict]:
         "session_id": session_id,
         "repo_url": meta.get("repo_url", ""),
         "status": meta.get("status", "pending"),
+        "clone_progress": meta.get("clone_progress"),
         "branches": branches,
         "evaluation": _serialize_evaluation(state["evaluation"]),
         "synthesis": _serialize_synthesis(state["synthesis"]),
@@ -161,21 +165,44 @@ def run_research_workflow(session_id: str, repo_url: str):
     meta = SESSION_META.get(session_id, {})
 
     try:
-        print(f"[{session_id}] Cloning {repo_url} into {temp_dir}...")
-        subprocess.run(
-            ["git", "clone", "--depth", "1", repo_url, temp_dir],
-            check=True,
-            capture_output=True,
-            timeout=60,
+        logger.info(f"[{session_id}] Starting clone for {repo_url} into {temp_dir}")
+        meta["status"] = "cloning"
+        meta["clone_progress"] = "Initializing clone..."
+        
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        
+        # We use Popen to stream progress from git clone
+        process = subprocess.Popen(
+            ["git", "clone", "--progress", "--depth", "1", repo_url, temp_dir],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env
         )
-        print(f"[{session_id}] Clone successful.")
+        
+        for line in process.stdout:
+            line_str = line.strip()
+            if line_str:
+                meta["clone_progress"] = line_str
+                logger.debug(f"[{session_id}] Git clone: {line_str}")
+                
+        process.wait()
+        if process.returncode != 0:
+            raise subprocess.CalledProcessError(process.returncode, process.args, output=meta.get("clone_progress", ""))
+            
+        logger.info(f"[{session_id}] Clone successful.")
+        meta["clone_progress"] = "Clone complete."
+        
     except subprocess.CalledProcessError as e:
+        logger.error(f"[{session_id}] Clone failed: {e.output}")
         meta["status"] = "failed"
-        meta["error"] = f"Failed to clone repository: {e.stderr.decode() if e.stderr else str(e)}"
+        meta["error"] = f"Failed to clone repository: {e.output}"
         return
-    except subprocess.TimeoutExpired:
+    except Exception as e:
+        logger.error(f"[{session_id}] Clone error: {str(e)}")
         meta["status"] = "failed"
-        meta["error"] = "Repository clone timed out (60s limit)."
+        meta["error"] = f"Repository clone error: {str(e)}"
         return
 
     state = SESSIONS[session_id]
@@ -183,6 +210,7 @@ def run_research_workflow(session_id: str, repo_url: str):
     meta["status"] = "running"
 
     try:
+        logger.info(f"[{session_id}] Starting LangGraph ToT workflow")
         for output in tot_graph.stream(state):
             for node_name, state_update in output.items():
                 if isinstance(state_update, dict):
@@ -190,18 +218,18 @@ def run_research_workflow(session_id: str, repo_url: str):
 
         meta["status"] = "complete"
         meta["completed_at"] = datetime.now(timezone.utc).isoformat()
-        print(f"[{session_id}] Workflow completed.")
+        logger.info(f"[{session_id}] Workflow completed successfully.")
 
     except Exception as e:
-        print(f"[{session_id}] Error in ToT workflow: {e}")
+        logger.error(f"[{session_id}] Error in ToT workflow: {e}", exc_info=True)
         meta["status"] = "failed"
         meta["error"] = f"Workflow failed: {str(e)}"
 
     finally:
         try:
             shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"[{session_id}] Failed to cleanup temp directory: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -247,8 +275,8 @@ async def stream_research_progress(session_id: str):
     SSE endpoint for real-time progress updates.
 
     Events:
-    - "progress": Branch status update
-    - "branch_complete": A branch finished its analysis
+    - "progress": Generic progress update (including cloning)
+    - "branch_update": A branch changed status
     - "complete": All branches done, final synthesis
     - "error": Something went wrong
     """
@@ -257,6 +285,8 @@ async def stream_research_progress(session_id: str):
 
     async def event_generator():
         last_branch_statuses = {}
+        last_clone_progress = None
+        last_status = None
 
         while True:
             if session_id not in SESSIONS:
@@ -265,8 +295,20 @@ async def stream_research_progress(session_id: str):
 
             meta = SESSION_META.get(session_id, {})
             current_status = meta.get("status", "pending")
+            current_clone = meta.get("clone_progress")
 
-            # Check each branch for changes
+            # Emitting status changes
+            if current_status != last_status:
+                last_status = current_status
+                snapshot = _serialize_session(session_id)
+                yield f"data: {json.dumps({'event': 'status_change', 'data': snapshot})}\n\n"
+
+            # Emitting clone progress
+            if current_status == "cloning" and current_clone != last_clone_progress:
+                last_clone_progress = current_clone
+                yield f"data: {json.dumps({'event': 'clone_progress', 'data': {'message': current_clone}})}\n\n"
+
+            # Emitting branch changes
             state = SESSIONS[session_id]
             for name in BRANCH_NAMES:
                 node = state[name]
@@ -275,13 +317,9 @@ async def stream_research_progress(session_id: str):
                     last_branch_statuses[name] = node.status
                     yield f"data: {json.dumps({'event': 'branch_update', 'data': {'branch': name, 'status': node.status}})}\n\n"
 
-            # Send progress snapshot
-            snapshot = _serialize_session(session_id)
-            if snapshot:
-                yield f"data: {json.dumps({'event': 'progress', 'data': snapshot})}\n\n"
-
             # Check terminal states
             if current_status in ("complete", "failed"):
+                snapshot = _serialize_session(session_id)
                 yield f"data: {json.dumps({'event': 'complete', 'data': snapshot})}\n\n"
                 break
 

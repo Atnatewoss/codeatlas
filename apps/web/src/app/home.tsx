@@ -154,7 +154,7 @@ export function HomeContent() {
             </div>
           </div>
         ) : (
-          <ChatPanel sessionId={sessionId!} />
+          <ChatPanel sessionId={sessionId!} statusData={statusData} />
         )}
       </div>
 
