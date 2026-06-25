@@ -1,64 +1,50 @@
-const API_BASE_URL = "http://localhost:8000/api"
+import { getApiBaseUrl } from "@/lib/api-base"
 
-export interface Evidence {
-  filepath: string
-  snippet: string
-  explanation: string
+const API_BASE_URL = getApiBaseUrl()
+
+export interface ChatThought {
+  id: string
+  parent_id?: string
+  depth?: number
+  description: string
+  hypothesis?: string
+  expected_evidence?: string
+  tool?: string
+  target?: string
+  score?: number
+  relevance?: number
+  evidence_strength?: number
+  source_diversity?: number
+  reasoning?: string
+  outcome?: string
+  is_pruned?: boolean
+  prune_reason?: string
+  prune_threshold?: number
 }
 
-export interface Finding {
-  text: string
-  confidence: number
-  evidence: Evidence[]
+export interface ChatStreamState {
+  thoughts: ChatThought[]
+  bestIds: string[]
+  rejectedIds: string[]
+  uncertainties: string[]
+  depth: number
+  maxDepth: number
+  answer: string
+  isComplete: boolean
+  isError: boolean
+  cloneProgress: string
+  phase: string
+  rejectedBranches: string
+  uncertaintiesSummary: string
+  graphStatus: string
+  graphDiagram: string
+  citations: string[]
 }
 
-export interface BranchStatus {
-  status: string
-  findings: Finding[]
-  error: string | null
-}
-
-export interface ResearchBranches {
-  structure: BranchStatus
-  runtime: BranchStatus
-  design: BranchStatus
-  onboarding: BranchStatus
-  risk: BranchStatus
-}
-
-export interface EvaluationResult {
-  contradictions: { finding_a: string; finding_b: string; reason: string }[]
-  agreements: { text: string; branches: string[]; confidence: number }[]
-  low_confidence: { text: string; confidence: number }[]
-  investigation_needed: boolean
-}
-
-export interface SynthesisResult {
-  summary: string
-  architecture_overview: string
-  key_insights: { text: string; confidence: number; branch: string }[]
-  learning_path: { file: string; reason: string }[]
-  risk_summary: string
-}
-
-export interface ResearchStatusResponse {
-  session_id: string
-  repo_url: string
-  status: "pending" | "cloning" | "running" | "complete" | "failed"
-  clone_progress?: string
-  branches: ResearchBranches
-  evaluation: EvaluationResult | null
-  synthesis: SynthesisResult | null
-  investigation_round: number
-  investigation_log: string[]
-  started_at: string | null
-  completed_at: string | null
-}
-
-export interface StartResearchResponse {
-  session_id: string
-  status_url: string
-  stream_url: string
+export interface ChatSSEEvent {
+  event: string
+  data: Record<string, unknown>
+  timestamp?: string
 }
 
 export interface ChatResponse {
@@ -67,19 +53,29 @@ export interface ChatResponse {
   citations: string[]
 }
 
-export async function startResearch(repoUrl: string): Promise<StartResearchResponse> {
-  const res = await fetch(`${API_BASE_URL}/research/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_url: repoUrl }),
-  })
-  if (!res.ok) throw new Error("Failed to start research")
-  return res.json()
+export interface DeepResearchResponse {
+  session_id: string
+  repo_path: string
 }
 
-export async function getResearchStatus(sessionId: string): Promise<ResearchStatusResponse> {
-  const res = await fetch(`${API_BASE_URL}/research/status/${sessionId}`)
-  if (!res.ok) throw new Error("Failed to get status")
+export async function startChatResearch(
+  repoPath: string,
+  query: string,
+  maxDepth: number = 3,
+  maxChildren: number = 2,
+  keepTopK: number = 5
+): Promise<DeepResearchResponse> {
+  const res = await fetch(`${API_BASE_URL}/chat/research`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      repo_path: repoPath, query,
+      max_depth: maxDepth,
+      max_children: maxChildren,
+      keep_top_k: keepTopK,
+    }),
+  })
+  if (!res.ok) throw new Error("Failed to start chat research")
   return res.json()
 }
 
