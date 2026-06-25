@@ -4,53 +4,6 @@ Deep Research & Architecture Intelligence for Complex Codebases. A **Tree of Tho
 
 Built with **LangGraph** (state machine), **FastAPI**, **Next.js**, and **GitHub Models** (gpt-4o-mini, free tier).
 
-## Architecture
-
-```
-codeatlas/
-├── apps/
-│   ├── api/                          # FastAPI backend
-│   │   ├── .env / .env.example       # GitHub token + optional per-task overrides
-│   │   ├── requirements.txt
-│   │   └── app/
-│   │       ├── main.py               # FastAPI app (CORS, routes, health)
-│   │       ├── core/
-│   │       │   └── settings.py       # All config via env vars (Pydantic Settings)
-│   │       ├── routers/
-│   │       │   └── chat.py           # POST /research, WebSocket /ws/{id}, GET /status
-│   │       ├── schemas/
-│   │       │   └── chat.py           # Pydantic request/response models
-│   │       └── services/             # Flat — no subdirectories
-│   │           ├── state.py          # Pydantic models + ToTChatState TypedDict
-│   │           ├── events.py         # In-memory event bus for streaming
-│   │           ├── clone.py          # Git clone to hashed cache dir
-│   │           ├── code_graph.py     # Wraps graphify + networkx for symbol/call graphs
-│   │           ├── prompts.py        # LLM prompt templates (generate, evaluate, synthesize)
-│   │           ├── tot_tools.py      # File tools (grep/glob/read_file) + code graph tools + scoring
-│   │           ├── tot_nodes.py      # BFS state machine node functions (parallel execution)
-│   │           ├── tot_chat.py       # LangGraph StateGraph builder + compile
-│   │           └── research.py       # Top-level orchestration (clone → graph → ToT → stream)
-│   └── web/                          # Next.js 16 App Router frontend
-│       └── src/
-│           ├── app/
-│           │   ├── page.tsx          # Entry point
-│           │   ├── home.tsx          # Landing page
-│           │   ├── chat/             # Per-repo chat pages
-│           │   └── globals.css       # Theme + scrollbar styles
-│           ├── components/
-│           │   └── chat/
-│           │       ├── chat-panel.tsx      # Main chat layout (messages + thinking + answer)
-│           │       ├── composer.tsx         # Textarea (Enter to send, Shift+Enter for newline)
-│           │       ├── message.tsx          # Markdown-rendered message bubbles
-│           │       ├── thinking-section.tsx # Status header + ToT tree + architecture diagram
-│           │       ├── tot-tree.tsx         # BFS tree visualization with per-axis scores
-│           │       ├── mermaid-block.tsx    # Mermaid diagram renderer (zoomable)
-│           │       └── typewriter-text.tsx  # (unused — kept for reference)
-│           └── hooks/
-│               └── use-chat-stream.ts  # WebSocket hook (answer_chunk, thought_pruned, etc.)
-├── Makefile                         # Dev orchestration (macOS/Linux)
-└── dev.ps1                          # Dev orchestration (Windows)
-```
 
 ## The ToT Loop
 
