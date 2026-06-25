@@ -6,3 +6,6 @@ graphify-*/
 *.egg-info/
 dist/
 build/
+.vscode/
+.pytest_cache/
+.next/
