@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { Composer } from "@/components/chat/composer"
 import { MessageComponent } from "@/components/chat/message"
-import { sendChatMessage, type ResearchStatusResponse } from "@/lib/api"
+import { ThinkingSection } from "@/components/chat/thinking-section"
+import { sendChatMessage, startChatResearch } from "@/lib/api"
+import { useChatStream } from "@/hooks/use-chat-stream"
 import { useMutation } from "@tanstack/react-query"
-import { Loader2, Sparkles, CheckCircle2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { MessageSquare, Network } from "lucide-react"
+import { MermaidBlock } from "@/components/chat/mermaid-block"
 
 interface Message {
   id: string
@@ -15,24 +17,32 @@ interface Message {
   citations?: string[]
 }
 
-export function ChatPanel({ sessionId, statusData }: { sessionId: string, statusData?: ResearchStatusResponse }) {
+export function ChatPanel({
+  sessionId,
+  repoPath,
+}: {
+  sessionId: string
+  repoPath?: string
+}) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "assistant",
       content: "I'm starting the deep research process. I'll build a mental model of this repository and report back shortly. Feel free to ask me questions while I work!",
-      citations: []
-    }
+      citations: [],
+    },
   ])
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null)
 
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const { mutate: startResearch, isPending: isResearchPending } = useMutation({
+    mutationFn: (payload: { repoPath: string; query: string }) =>
+      startChatResearch(payload.repoPath, payload.query, 3, 2, 5),
+    onSuccess: (res) => setChatSessionId(res.session_id),
+  })
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages, statusData])
-
-  const { mutate: sendMessage, isPending: isLoading } = useMutation({
-    mutationFn: (history: { role: string; content: string }[]) => sendChatMessage(sessionId, history),
+  const { mutate: sendSyncMessage, isPending: isSyncPending } = useMutation({
+    mutationFn: (history: { role: string; content: string }[]) =>
+      sendChatMessage(sessionId, history),
     onSuccess: (res) => {
       const assistantMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -48,135 +58,182 @@ export function ChatPanel({ sessionId, statusData }: { sessionId: string, status
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: "Sorry, I couldn't reach the research server. Make sure the API is running on port 8000.",
+          content:
+            "Sorry, I couldn't reach the research server. Make sure the API is running on port 8000.",
         },
       ])
-    }
+    },
   })
 
-  const handleSend = (content: string) => {
-    if (!content.trim() || isLoading) return
+  const onResearchComplete = useCallback(() => {
+    setChatSessionId(null)
+  }, [])
 
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
+  const { state: chatState } = useChatStream(chatSessionId, { onComplete: onResearchComplete })
+
+  const isResearching = chatSessionId !== null && !chatState.isComplete
+
+  // Keep thinking section visible after completion so the final time is shown
+  const showThinking = chatSessionId !== null || (chatState.isComplete && chatState.thoughts.length > 0)
+  // Timer only ticks while research is actively running
+  const timerActive = chatSessionId !== null && !chatState.isComplete
+  const isLoading = isResearchPending || isSyncPending || isResearching
+
+  const [elapsed, setElapsed] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(() => {
+    if (!timerActive) {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+      return
     }
+    const start = Date.now()
+    setElapsed(0)
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000))
+    }, 200)
+    return () => { if (timerRef.current) clearInterval(timerRef.current); timerRef.current = null }
+  }, [timerActive])
 
-    setMessages((prev) => [...prev, userMsg])
+  const [thoughtsExpanded, setThoughtsExpanded] = useState(false)
 
-    const history = [...messages, userMsg].map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+  // Auto-open thinking while research runs, auto-close when answer arrives
+  useEffect(() => {
+    if (chatSessionId !== null && !chatState.isComplete) {
+      setThoughtsExpanded(true)
+    }
+    if (chatState.isComplete) {
+      setThoughtsExpanded(false)
+    }
+  }, [chatSessionId, chatState.isComplete])
 
-    sendMessage(history)
-  }
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const prevMsgCount = useRef(messages.length)
 
-  const isResearching = statusData?.status === "cloning" || statusData?.status === "running"
-  const isComplete = statusData?.status === "complete"
-  
-  const sourceCount = statusData?.branches 
-    ? Object.values(statusData.branches)
-        .filter(b => b.status === 'complete')
-        .reduce((acc, b) => acc + (b.findings ? b.findings.reduce((fAcc, f) => fAcc + (f.evidence ? f.evidence.length : 0), 0) : 0), 0)
-    : 0;
+  // Scroll to bottom only when user sends a new message
+  useEffect(() => {
+    if (messages.length > prevMsgCount.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    }
+    prevMsgCount.current = messages.length
+  }, [messages.length])
 
-  const repoName = statusData?.repo_url ? new URL(statusData.repo_url).pathname.slice(1) : "the repository"
+  const handleSend = useCallback(
+    (content: string) => {
+      if (!content.trim() || isLoading) return
+
+      const userMsg: Message = {
+        id: Date.now().toString(),
+        role: "user",
+        content,
+      }
+      setMessages((prev) => [...prev, userMsg])
+
+      if (repoPath) {
+        startResearch(
+          { repoPath, query: content },
+          {
+            onError: () => {
+              sendSyncMessage([...messages, userMsg].map((m) => ({
+                role: m.role,
+                content: m.content,
+              })))
+            },
+          }
+        )
+      } else {
+        sendSyncMessage([...messages, userMsg].map((m) => ({
+          role: m.role,
+          content: m.content,
+        })))
+      }
+    },
+    [isLoading, repoPath, messages, startResearch, sendSyncMessage]
+  )
 
   return (
     <div className="flex-1 flex flex-col h-full bg-gradient-to-b from-background to-muted/10">
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-        {messages.map((msg) => (
-          <MessageComponent
-            key={msg.id}
-            role={msg.role}
-            content={msg.content}
-            citations={msg.citations}
-          />
-        ))}
+      <div className="flex-1 overflow-y-auto scrollbar-theme">
+        <div className="max-w-2xl mx-auto px-4 md:px-6 space-y-4 py-4 md:py-6">
+          {/* Messages: only user messages + first welcome */}
+          {messages.map((msg, idx) => {
+            if (msg.role === "assistant" && idx !== 0) return null
+            return (
+              <MessageComponent
+                key={msg.id}
+                role={msg.role}
+                content={msg.content}
+                citations={msg.citations}
+              />
+            )
+          })}
 
-        {/* Live Research Bubble */}
-        {statusData && (isResearching || isComplete) && (
-          <div className="flex flex-col items-start gap-2 max-w-3xl mx-auto w-full group">
-            <div className="flex items-center gap-3 w-full">
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 border shadow-sm transition-all duration-700",
-                isComplete ? "bg-primary/10 border-primary/20 text-primary" : "bg-muted border-border/50 text-muted-foreground"
-              )}>
-                {isComplete ? <CheckCircle2 className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+          {/* Sync pending indicator */}
+          {isSyncPending && !chatSessionId && (
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               </div>
-              
-              <div className="flex-1 bg-card border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all duration-500 hover:shadow-md hover:border-primary/30">
-                {isResearching && (
-                  <div className="absolute top-0 left-0 w-full h-[2px] bg-muted overflow-hidden">
-                    <div className="absolute top-0 left-0 h-full bg-primary w-1/3 animate-[translateX_2s_ease-in-out_infinite]" style={{ transform: "translateX(-100%)", animationName: "indeterminate-progress" }}></div>
-                  </div>
-                )}
-                
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    {isResearching && <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />}
-                    <span className="text-sm font-medium tracking-tight">
-                      {statusData.status === "cloning" ? `Cloning ${repoName}` : 
-                       statusData.status === "running" ? `Analyzing ${repoName}` :
-                       `Research complete for ${repoName}`}
-                    </span>
-                  </div>
-                  <span className="text-xs font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                    {sourceCount} sources
-                  </span>
-                </div>
-
-                <div className="space-y-2">
-                  {statusData.status === "cloning" ? (
-                    <div className="text-xs font-mono text-muted-foreground bg-muted/50 p-2 rounded-lg border border-border/50 truncate">
-                      {statusData.clone_progress || "Initializing clone..."}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-1.5">
-                      {["structure", "runtime", "design", "onboarding", "risk"].map(branch => {
-                        const bStatus = statusData.branches[branch as keyof typeof statusData.branches]?.status;
-                        if (!bStatus || bStatus === "idle") return null;
-                        return (
-                          <div key={branch} className="flex items-center gap-2 text-xs">
-                            {bStatus === "complete" ? (
-                              <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
-                            ) : bStatus === "running" ? (
-                              <Loader2 className="w-3 h-3 text-primary animate-spin shrink-0" />
-                            ) : (
-                              <div className="w-3 h-3 rounded-full border border-dashed border-muted-foreground/50 shrink-0" />
-                            )}
-                            <span className={cn("capitalize tracking-tight", bStatus === "complete" ? "text-foreground" : "text-muted-foreground")}>
-                              {branch} Analysis
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
+              <div className="flex gap-1 py-3 bg-muted/30 px-3 rounded-2xl border">
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" />
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {isLoading && (
-          <div className="flex items-center gap-3 max-w-3xl mx-auto">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 border border-primary/20">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+          {/* Single thinking section — visible as soon as research starts */}
+          {showThinking && (
+            <ThinkingSection
+              isResearching={isResearching}
+              chatState={chatState}
+              thoughtsExpanded={thoughtsExpanded}
+              onToggleExpanded={() => setThoughtsExpanded((v) => !v)}
+              elapsed={elapsed}
+            />
+          )}
+
+          {/* Live answer streaming */}
+          {chatState.answer && !chatState.isComplete && (
+            <div className="bg-card border rounded-2xl p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare className="w-4 h-4 text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Answer</span>
+              </div>
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                {chatState.answer}
+                <span className="inline-block w-1 h-4 bg-primary ml-0.5 animate-pulse" />
+              </p>
             </div>
-            <div className="flex gap-1 py-3 bg-muted/30 px-3 rounded-2xl border">
-              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-1.5 h-1.5 bg-muted-foreground/50 rounded-full animate-bounce" />
+          )}
+
+          {/* Final answer below thinking section — architecture diagram shown inline above answer */}
+          {chatState.answer && chatState.isComplete && (
+            <div>
+              {chatState.graphDiagram && (
+                <div className="mb-3 bg-card border rounded-2xl p-3 shadow-sm">
+                  <div className="flex items-center gap-1.5 mb-2 text-[10px] text-muted-foreground/50">
+                    <Network className="w-3 h-3" />
+                    <span>Architecture diagram</span>
+                    <span className="text-[9px] text-muted-foreground/30">({chatState.graphDiagram.split('\n').filter(l => l.includes('-->')).length} call edges)</span>
+                  </div>
+                  <MermaidBlock content={chatState.graphDiagram.replace(/^```mermaid\n?|```$/g, '')} />
+                </div>
+              )}
+              <MessageComponent
+                role="assistant"
+                content={chatState.answer || "I explored the codebase but couldn't find specific information about that query."}
+                citations={chatState.citations}
+              />
             </div>
-          </div>
-        )}
-        <div ref={bottomRef} />
+          )}
+
+          <div ref={bottomRef} />
+        </div>
       </div>
+
       <div className="p-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-2xl mx-auto">
           <Composer onSend={handleSend} disabled={isLoading} />
         </div>
       </div>

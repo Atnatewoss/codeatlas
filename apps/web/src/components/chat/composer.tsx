@@ -38,11 +38,11 @@ export function Composer({
   }
 
   return (
-    <div className="relative max-w-3xl mx-auto flex items-end gap-2 bg-muted/50 p-2 rounded-xl border">
+    <div className="relative flex items-end gap-2 bg-muted/50 p-2 rounded-3xl border">
       <Textarea
         ref={textareaRef}
         placeholder="Ask about this repository... (Enter to send, Shift+Enter for newline)"
-        className="min-h-[44px] max-h-32 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 p-3 py-2.5 text-sm"
+        className="min-h-[36px] max-h-24 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 p-2 py-1.5 text-sm"
         rows={1}
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -52,7 +52,7 @@ export function Composer({
       />
       <Button
         size="icon"
-        className="h-9 w-9 rounded-lg shrink-0"
+        className="h-9 w-9 rounded-xl shrink-0"
         onClick={handleSend}
         disabled={!value.trim() || disabled}
       >
