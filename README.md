@@ -9,12 +9,6 @@
 
 ---
 
-Every day, engineers waste hours onboarding onto unfamiliar repositories. Code search tools return *matches*, not *understanding*. Documentation is perpetually out of date.
-
-**CodeAtlas is an autonomous codebase intelligence engine.** Point it at any Git repository and it explores, reasons about, and synthesizes the architecture into a coherent mental model - with call graphs, diagrams, and traced citations. Works on repos of any size, language, or framework.
-
----
-
 ## Features
 
 - **Autonomous Exploration** - LLM-driven agent generates hypotheses, selects tools, executes them in parallel, and iterates until it understands the codebase.
@@ -28,9 +22,9 @@ Every day, engineers waste hours onboarding onto unfamiliar repositories. Code s
 
 ## How It Works
 
-CodeAtlas builds an AST-derived **code graph** of the entire repository - every symbol, call, import, and inheritance edge. All exploration tools (`lookup_symbol`, `get_callers`, `get_callees`, `graph_stats`) query against it.
+CodeAtlas first builds a rich **code graph** (via [graphify](https://github.com/anomalyco/graphify), AST-derived, with nodes for every symbol and edges for calls, imports, and inheritance) that represents the full structure of the repository. This graph then drives a **LangGraph-powered Tree-of-Thought** workflow - exploring the codebase, reasoning about architecture, and synthesizing everything into a coherent mental model with call graphs, data flow diagrams, and cited evidence.
 
-On top of this graph runs a **BFS + Beam Search** hybrid - BFS controls depth while beam search prunes low-value branches at each level, keeping only the top-K scoring thoughts.
+The workflow is a **BFS + Beam Search** hybrid - BFS controls depth while beam search prunes low-value branches at each level, keeping only the top-K scoring thoughts.
 
 ```
 generate_thoughts → execute_batch → evaluate_batch → beam_prune_expand ──→ synthesize
