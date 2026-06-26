@@ -9,29 +9,28 @@
 
 ---
 
-Every day, engineers waste hours onboarding onto unfamiliar repositories - tracing data flow, finding entry points, untangling architecture decisions buried across hundreds of files. Code search tools (ripgrep, GitHub search) return *matches*, not *understanding*. Documentation is perpetually out of date.
+Every day, engineers waste hours onboarding onto unfamiliar repositories. Code search tools return *matches*, not *understanding*. Documentation is perpetually out of date.
 
-**CodeAtlas is an autonomous codebase intelligence engine.** It first builds a rich **code graph** (via [graphify](https://github.com/anomalyco/graphify), AST-derived, with nodes for every symbol and edges for calls, imports, and inheritance) that represents the full structure of the repository. This graph then drives a LangGraph-powered Tree-of-Thought workflow - exploring the codebase, reasoning about architecture, and synthesizing everything into a coherent mental model with call graphs, data flow diagrams, and cited evidence. It works on repos of any size, language, or framework.
+**CodeAtlas is an autonomous codebase intelligence engine.** Point it at any Git repository and it explores, reasons about, and synthesizes the architecture into a coherent mental model - with call graphs, diagrams, and traced citations. Works on repos of any size, language, or framework.
 
 ---
 
 ## Features
 
-- **Code Graph** - Builds an AST-derived graph (via [graphify](https://github.com/anomalyco/graphify)) of every symbol, call relationship, import, and inheritance edge across the entire repository - the backbone that powers all analysis tools.
-- **Autonomous Exploration** - LLM-driven agent generates hypotheses, selects tools (`grep`, `glob`, `read_file`, `lookup_symbol`, `get_callers`, `get_callees`, `graph_stats`), executes them in parallel, and iterates - no human in the loop.
-- **BFS + Beam Search Hybrid** - Broad exploration at each depth level combined with beam-style pruning that keeps only the top-K scoring thoughts, focusing compute on the most promising reasoning branches.
-- **Hybrid Scorer** - Each thought is scored on relevance (0-1), evidence strength (0-1), and source diversity. Weighted overall: `0.5×relevance + 0.3×evidence + 0.2×diversity`.
-- **Traced Citations** - Every claim in the synthesis links back to specific files and lines (`file.py:42`) so you can verify and explore the source directly.
-- **Architecture Diagrams** - Auto-generated Mermaid diagrams showing module relationships, call graphs, and data flow.
-- **Real-Time Streaming** - WebSocket-based communication so you see research progress as it happens.
+- **Autonomous Exploration** - LLM-driven agent generates hypotheses, selects tools, executes them in parallel, and iterates until it understands the codebase.
+- **BFS + Beam Search Hybrid** - Broad exploration at each depth level with beam pruning that keeps only the top-K scoring branches, focusing compute on the most promising paths.
+- **Code Graph Backend** - Every symbol, call, import, and inheritance edge mapped via [graphify](https://github.com/anomalyco/graphify).
+- **Traced Citations** - Every claim links back to specific files and lines (`file.py:42`) for verification.
+- **Architecture Diagrams** - Auto-generated Mermaid call graphs and data flow diagrams.
+- **Real-Time Streaming** - WebSocket-based so you see progress as it happens.
 
 ---
 
 ## How It Works
 
-CodeAtlas first builds a **code graph** (via [graphify](https://github.com/anomalyco/graphify)) - a complete AST-derived graph of every symbol, function, class, call relationship, import, and inheritance edge in the repository. This graph is the backbone of the exploration: all tools (lookup_symbol, get_callers, get_callees, graph_stats) query against it directly.
+CodeAtlas builds an AST-derived **code graph** of the entire repository - every symbol, call, import, and inheritance edge. All exploration tools (`lookup_symbol`, `get_callers`, `get_callees`, `graph_stats`) query against it.
 
-On top of this graph, CodeAtlas runs a **BFS + Beam Search** hybrid - BFS governs the depth-limited exploration while beam search prunes low-value branches at each level, keeping only the top-K scoring thoughts.
+On top of this graph runs a **BFS + Beam Search** hybrid - BFS controls depth while beam search prunes low-value branches at each level, keeping only the top-K scoring thoughts.
 
 ```
 generate_thoughts → execute_batch → evaluate_batch → beam_prune_expand ──→ synthesize
