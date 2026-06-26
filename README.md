@@ -7,9 +7,9 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License MIT"/>
 </p>
 
-Go from zero to productive on any codebase in minutes - CodeAtlas autonomously explores, maps, and explains the full architecture.
-
 ---
+
+Go from zero to productive on any codebase in minutes - CodeAtlas autonomously explores, maps, and explains the full architecture.
 
 ## Features
 
