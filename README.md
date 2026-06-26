@@ -9,6 +9,8 @@
 
 Go from zero to productive on any codebase in minutes - CodeAtlas autonomously explores, maps, and explains the full architecture.
 
+---
+
 ## Features
 
 - **Autonomous Exploration** - LLM-driven agent generates hypotheses, selects tools, executes them in parallel, and iterates until it understands the codebase.
