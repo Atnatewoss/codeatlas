@@ -9,6 +9,10 @@
 
 ---
 
+CodeAtlas autonomously explores Git repositories to build a mental model of their architecture — mapping symbols, calls, and dependencies, then reasoning about them to produce diagrams and cited explanations.
+
+---
+
 ## Features
 
 - **Autonomous Exploration** - LLM-driven agent generates hypotheses, selects tools, executes them in parallel, and iterates until it understands the codebase.
