@@ -7,11 +7,7 @@
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License MIT"/>
 </p>
 
----
-
-CodeAtlas autonomously explores Git repositories to build a mental model of their architecture — mapping symbols, calls, and dependencies, then reasoning about them to produce diagrams and cited explanations.
-
----
+Go from zero to productive on any codebase in minutes - CodeAtlas autonomously explores, maps, and explains the full architecture.
 
 ## Features
 
