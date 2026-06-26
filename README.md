@@ -1,11 +1,11 @@
+<h1 align="center">CodeAtlas</h1>
+<p align="center"><strong>Build a mental model of any codebase in minutes.</strong></p>
+
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12%2B-blue" alt="Python 3.12+"/>
   <img src="https://img.shields.io/badge/node-18%2B-brightgreen" alt="Node 18+"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License MIT"/>
 </p>
-
-<h1 align="center">CodeAtlas</h1>
-<p align="center"><strong>Build a mental model of any codebase in minutes.</strong></p>
 
 ---
 
